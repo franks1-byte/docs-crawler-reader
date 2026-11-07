@@ -1,0 +1,965 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Fine Print Crawler</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: a dark reading desk. Document on the left under a crawling spider, live instrument panel on the right. Single deliberate dark look, like a terminal. */
+:root {
+  color-scheme: dark;
+  --bg: #0b0d11;
+  --desk: #10131a;
+  --paper: #141822;
+  --ink: #d4d8e0;
+  --ink-dim: #6d7483;
+  --line: #242a36;
+  --mint: #79cfa9;
+  --mint-ink: #08150f;
+  --violet: #a184ff;
+  --violet-wash: rgba(161,132,255,.30);
+  --coral: #ff8a63;
+  --coral-ink: #2a0d03;
+  --amber: #f0c662;
+  --font-body: "Instrument Sans", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+[hidden] { display: none !important; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+.app { display: flex; flex-direction: column; height: 100%; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 12px 16px; gap: 12px; }
+
+.bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; }
+.brand { display: flex; align-items: baseline; gap: 12px; min-width: 0; }
+.brand h1 { margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -.01em; text-wrap: balance; }
+.brand .tagline { font-family: var(--font-mono); font-size: 11px; color: var(--ink-dim); letter-spacing: .06em; text-transform: uppercase; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.btn { font: 600 13px/1 var(--font-body); color: var(--ink); background: var(--desk); border: 1px solid var(--line); border-radius: 6px; padding: 9px 12px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.btn:hover:not(:disabled) { border-color: var(--ink-dim); }
+.btn:focus-visible, select:focus-visible, input:focus-visible + .tick { outline: 2px solid var(--violet); outline-offset: 2px; }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn.primary { background: var(--mint); color: var(--mint-ink); border-color: var(--mint); }
+.btn.hot { background: var(--coral); color: var(--coral-ink); border-color: var(--coral); }
+select { font: 500 13px var(--font-body); color: var(--ink); background: var(--desk); border: 1px solid var(--line); border-radius: 6px; padding: 8px 8px; }
+
+.grid { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 12px; }
+@media (max-width: 860px) {
+  .app { height: auto; }
+  .grid { grid-template-columns: minmax(0, 1fr); }
+  .stage { height: 64vh; }
+}
+
+.stage { position: relative; min-height: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--desk); overflow: hidden; }
+.viewer { position: absolute; inset: 0; overflow-y: auto; overflow-x: hidden; }
+.content { position: relative; max-width: 720px; margin: 0 auto; padding: 22px 22px 45vh; }
+#fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.drop { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(11,13,17,.86); border: 2px dashed var(--mint); border-radius: 8px; font: 600 18px var(--font-body); color: var(--mint); z-index: 3; }
+
+.sec { margin: 0 0 26px; background: var(--paper); border: 1px solid var(--line); }
+.strip { background: var(--mint); color: var(--mint-ink); font: 600 11.5px/1 var(--font-mono); padding: 5px 10px; letter-spacing: .02em; }
+.sechud { margin: 10px 14px 0; font: 400 10.5px/1.6 var(--font-mono); color: var(--violet); background: rgba(161,132,255,.12); border: 1px solid rgba(161,132,255,.35); padding: 5px 8px; text-transform: uppercase; overflow-wrap: anywhere; }
+.sec p { margin: 0; padding: 10px 14px; line-height: 1.75; font-size: 14px; overflow-wrap: anywhere; }
+.sec p + p { padding-top: 0; }
+.w { opacity: .42; transition: opacity .25s, background-color .25s; border-radius: 2px; }
+.w.r { opacity: 1; }
+.w.kw { background: var(--violet-wash); box-shadow: 0 0 0 1px rgba(161,132,255,.25); }
+.w.fl { background: var(--coral); color: var(--coral-ink); position: relative; }
+.w.fn { background: rgba(240,198,98,.22); box-shadow: inset 0 -2px 0 var(--amber); }
+.w.ring::after { content: ""; position: absolute; inset: -7px -9px; border: 1.5px solid var(--coral); border-radius: 50%; pointer-events: none; }
+.tag { position: absolute; z-index: 2; background: var(--coral); color: var(--coral-ink); font: 600 16px/1 var(--font-body); padding: 6px 10px 6px 8px; border-radius: 3px; white-space: nowrap; box-shadow: 0 6px 18px rgba(0,0,0,.45); animation: pop .35s cubic-bezier(.2,1.4,.4,1) both; pointer-events: none; }
+.tag.note { background: var(--amber); }
+@keyframes pop { from { transform: scale(.4) translateY(8px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+.side { min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
+.panel { background: var(--desk); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; min-width: 0; }
+.panel h2 { margin: 0 0 10px; font: 600 11px/1 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-dim); display: flex; justify-content: space-between; gap: 8px; }
+.file { font-weight: 600; font-size: 15px; overflow-wrap: anywhere; }
+.status { color: var(--ink-dim); font-size: 13px; margin-top: 3px; }
+.example { display: inline-block; font: 600 10px/1 var(--font-mono); color: var(--amber); border: 1px solid var(--amber); border-radius: 3px; padding: 3px 5px; margin-left: 6px; vertical-align: 2px; text-transform: uppercase; letter-spacing: .06em; }
+.meter { height: 4px; background: var(--line); border-radius: 2px; margin: 12px 0; overflow: hidden; }
+.meter i { display: block; height: 100%; width: 0; background: var(--mint); }
+.stats { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; }
+.stat b { display: block; font: 600 18px var(--font-mono); font-variant-numeric: tabular-nums; }
+.stat span { font-size: 11px; color: var(--ink-dim); text-transform: uppercase; letter-spacing: .05em; }
+.flags { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.flags button { font: 600 12.5px var(--font-body); border: 0; border-radius: 3px; padding: 5px 8px; cursor: pointer; background: var(--coral); color: var(--coral-ink); }
+.flags button.note { background: var(--amber); }
+.flags button b { font-family: var(--font-mono); margin-left: 4px; }
+.kws { display: flex; flex-wrap: wrap; gap: 5px; }
+.kws span { font: 500 12px var(--font-mono); padding: 3px 6px; border-radius: 3px; background: var(--violet-wash); color: var(--ink); }
+.empty { color: var(--ink-dim); font-size: 13px; }
+.opts { display: grid; gap: 6px; margin-bottom: 10px; font-size: 13px; }
+.opts label { display: flex; gap: 8px; align-items: center; cursor: pointer; }
+.opts input { accent-color: var(--mint); width: 15px; height: 15px; }
+.summary { font-size: 13.5px; line-height: 1.6; }
+.summary h3 { font: 600 11px var(--font-mono); text-transform: uppercase; letter-spacing: .06em; color: var(--ink-dim); margin: 12px 0 4px; }
+.summary p { margin: 0; }
+.summary ul { margin: 0; padding-left: 18px; }
+.summary li { margin: 3px 0; }
+.summary .lbl { font: 600 11px var(--font-body); background: var(--coral); color: var(--coral-ink); padding: 1px 5px; border-radius: 2px; margin-right: 5px; white-space: nowrap; }
+.summary .lbl.note { background: var(--amber); }
+.by { font: 400 11px var(--font-mono); color: var(--ink-dim); }
+.msg { font-size: 12.5px; color: var(--amber); margin-top: 8px; min-height: 1em; }
+@media (prefers-reduced-motion: reduce) { .tag { animation: none; } .w { transition: none; } }
+</style>
+</head>
+<body>
+
+
+<div class="app">
+  <header class="bar">
+    <div class="brand">
+      <h1>Fine Print Crawler</h1>
+      <span class="tagline">reads it so you don't have to</span>
+    </div>
+    <div class="actions">
+      <input class="sr" id="file" type="file" accept=".docx,.pdf,.txt,.md,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+      <label class="btn primary" for="file">Upload document</label>
+      <label class="sr" for="speed">Crawl speed</label>
+      <select id="speed">
+        <option value="0.5">Slow crawl</option>
+        <option value="1" selected>Normal crawl</option>
+        <option value="2.5">Fast crawl</option>
+      </select>
+      <button class="btn" id="skip" type="button">Skip to end</button>
+      <button class="btn hot" id="save" type="button" disabled>Download .docx summary</button>
+    </div>
+  </header>
+
+  <main class="grid">
+    <section class="stage" id="stage" aria-label="Document being scanned">
+      <div class="viewer" id="viewer"><div class="content" id="content"></div></div>
+      <canvas id="fx" aria-hidden="true"></canvas>
+      <div class="drop" id="drop" hidden>Drop the file to scan it</div>
+    </section>
+
+    <aside class="side">
+      <div class="panel">
+        <h2><span>Scanning</span><span id="pct">0%</span></h2>
+        <div class="file" id="fname">—</div>
+        <div class="status" id="status">Loading…</div>
+        <div class="meter"><i id="bar"></i></div>
+        <div class="stats">
+          <div class="stat"><b id="sWords">0</b><span>words read</span></div>
+          <div class="stat"><b id="sWps">0</b><span>words / sec</span></div>
+          <div class="stat"><b id="sSec">0/0</b><span>section</span></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2><span>Flags</span><span id="flagCount">0</span></h2>
+        <ul class="flags" id="flags"><li class="empty">Nothing flagged yet.</li></ul>
+      </div>
+
+      <div class="panel">
+        <h2><span>Keywords</span><span id="kwCount">0</span></h2>
+        <div class="kws" id="kws"><span class="empty" style="background:none">Keywords light up as the crawler reads.</span></div>
+      </div>
+
+      <div class="panel">
+        <h2><span>Summary</span><span class="by" id="by"></span></h2>
+        <div class="opts">
+          <label><input type="checkbox" id="optClaude" checked> Let Claude write the summary (uploaded files)</label>
+          <label><input type="checkbox" id="optAuto" checked> Create the .docx automatically when the scan ends</label>
+        </div>
+        <div class="summary" id="summary"><p class="empty">The summary appears here when the crawler finishes.</p></div>
+        <div class="msg" id="msg" role="status"></div>
+      </div>
+    </aside>
+  </main>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/mammoth@1.6.0/mammoth.browser.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js"></script>
+<script>
+// <pure>
+const STOP = new Set(("a about above after again against all also am an and any are as at be because been before being below between both but by can could did do does doing down during each either else ever every few for from further had has have having he her here hers herself him himself his how however i if in into is it its itself just let may me might more most must my myself no nor not now of off on once only or other our ours ourselves out over own per same shall she should so some such than that the their theirs them themselves then there these they this those through thus to too under until up upon us very via was we were what when where whether which while who whom whose why will with within without would yet you your yours yourself yourselves " +
+  "ang sa ug nga mga na ng ay si ni kay ko mo ka og pa pud usab man lang kini kana mao para kung unsa ako ikaw siya kami kita sila ato atong ilang iyang ilaha ani ana diha dinhi wala dili oo naa adto akong imong niini niana " +
+  "one two three use used using also including include includes may any such each within without upon thereof herein hereby time reason available behalf together current certain other").split(/\s+/));
+
+const FLAGS = [
+  { label: "Forever", re: /\b(perpetual(ly)?|in perpetuity|forever|indefinitely)\b/gi },
+  { label: "Irrevocable", re: /\birrevocabl[ey]\b/gi },
+  { label: "Without Notice", re: /\bwithout (prior |any |advance )?notice\b/gi },
+  { label: "They Can Change It", re: /\b(revise|modify|change|amend|update) (these|this|the|our) (terms|agreement|policy|policies)\b/gi },
+  { label: "Shared With Others", re: /\b(third[- ]part(y|ies)|our partners|affiliates|advertisers)\b/gi },
+  { label: "Sold As An Asset", re: /\b(sell|sold|business assets?|merger|acquisition|bankruptcy)\b/gi },
+  { label: "Your Face", re: /\b(biometric\w*|face ?prints?|facial|faces?|voice ?prints?|fingerprints?)\b/gi },
+  { label: "Where You Are", re: /\b(precise location|location data|gps|geolocation|where you (live|sleep|are|go))\b/gi },
+  { label: "Trains AI On You", re: /\b(train(ing|s)? (our |its |their )?(ai|models?|algorithms?|systems?)|machine learning|artificial intelligence)\b/gi },
+  { label: "Data Brokers", re: /\bdata brokers?\b/gi },
+  { label: "Survives Deletion", re: /\b(surviv\w+|after (you )?(delete|deletion|termination|you close)|backup copies|retain\w*)\b/gi },
+  { label: "Can Ban You", re: /\b((suspend|terminate|restrict|disable) (your |any )?(account|access))\b|\bfor any reason or no reason\b/gi },
+  { label: "Free License", re: /\b(royalty[- ]free|sub-?licensable|worldwide licen[cs]e)\b/gi },
+  { label: "Your Kids", re: /\b(minors?|child(ren)?|under (the age of )?1[3-8]|parental consent)\b/gi },
+  { label: "No Day In Court", re: /\b(binding arbitration|class action|waive\w* (your |any )?right)\b/gi },
+  { label: "Auto-Renew", re: /\b(auto(matically)?[- ]renew\w*|recurring (charges?|billing|payments?))\b/gi },
+  { label: "Fees", re: /\b(non-?refundable|late fees?|penalt(y|ies)|additional fees?|cancellation fees?)\b/gi },
+  { label: "Deadline", note: true, re: /\b(deadline|due (date|on|by)|no later than|on or before|within \d+ (calendar |business )?(days|hours|weeks))\b/gi },
+  { label: "Required", note: true, re: /\b(required|mandatory|must (submit|be|have|provide|pass|attend|complete))\b/gi },
+  { label: "Important", note: true, re: /\b(important|take note|note that|warning|strictly)\b/gi },
+];
+
+function normWord(t) { return t.toLowerCase().replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, ""); }
+
+function isHeading(s) {
+  s = s.trim();
+  if (s.length < 2 || s.length > 90) return false;
+  if (s.split(/\s+/).length > 12) return false;
+  if (/[.,;]$/.test(s) && !/^(\d+(\.\d+)*|[IVX]+)\.$/.test(s)) return false;
+  if (/^#{1,6}\s/.test(s)) return true;
+  if (/^(\d+(\.\d+)*[.)]?|[IVXLC]+\.|section|article|chapter|part|lesson|module|unit)\s+\S/i.test(s)) return true;
+  if (s === s.toUpperCase() && /\p{Lu}{3}/u.test(s)) return true;
+  return false;
+}
+function cleanHeading(s) { return s.replace(/^#{1,6}\s+/, "").trim(); }
+
+// Plain text → blocks [{h, text}]
+function blocksFromText(txt) {
+  const out = [];
+  const chunks = txt.replace(/\r/g, "").split(/\n\s*\n+/);
+  for (const c of chunks) {
+    const lines = c.split("\n").map(l => l.trim()).filter(Boolean);
+    let buf = [];
+    const flush = () => { if (buf.length) { out.push({ h: false, text: buf.join(" ").replace(/\s+/g, " ") }); buf = []; } };
+    for (const l of lines) {
+      if (isHeading(l) && (buf.length === 0 || /[.:!?]$/.test(buf[buf.length - 1]))) { flush(); out.push({ h: true, text: cleanHeading(l) }); }
+      else buf.push(l.replace(/^[-*•]\s+/, "• "));
+    }
+    flush();
+  }
+  return out;
+}
+
+function splitSentences(t) {
+  return t.split(/(?<=[.!?])\s+(?=["“(\[]?[\p{Lu}\p{N}•])/u).map(s => s.trim()).filter(s => s.length > 3);
+}
+
+function analyze(name, blocks) {
+  let sections = [], cur = null;
+  for (const b of blocks) {
+    if (!b.text || !b.text.trim()) continue;
+    if (b.h) { cur = { title: b.text.trim(), paras: [] }; sections.push(cur); }
+    else { if (!cur) { cur = { title: "Opening", paras: [] }; sections.push(cur); } cur.paras.push(b.text.trim()); }
+  }
+  // headings with no body: fold title into the next section
+  const merged = [];
+  for (let i = 0; i < sections.length; i++) {
+    const s = sections[i];
+    if (!s.paras.length && sections[i + 1] && !sections[i + 1].paras.length) continue;
+    if (!s.paras.length) { if (sections[i + 1]) sections[i + 1].title = s.title + " — " + sections[i + 1].title; continue; }
+    merged.push(s);
+  }
+  sections = merged;
+  const countWords = s => s.paras.join(" ").split(/\s+/).filter(Boolean).length;
+  const total0 = sections.reduce((a, s) => a + countWords(s), 0);
+  if (sections.length <= 1 && total0 > 350) {
+    const paras = sections.length ? sections[0].paras : [];
+    sections = []; let part = null, n = 0;
+    for (const p of paras) {
+      if (!part || n > 220) { part = { title: "Part " + (sections.length + 1), paras: [] }; sections.push(part); n = 0; }
+      part.paras.push(p); n += p.split(/\s+/).length;
+    }
+  }
+  if (!sections.length) throw new Error("No readable text found in this file.");
+
+  const words = [];
+  const tf = new Map();
+  sections.forEach((s, si) => {
+    s.wordStart = words.length;
+    s.tf = new Map();
+    s.paraWords = [];
+    s.paras.forEach((text, pi) => {
+      const parts = text.split(/(\s+)/);
+      const idxs = [];
+      let off = 0;
+      for (const part of parts) {
+        if (part && !/^\s+$/.test(part)) {
+          const w = { t: part, sec: si, para: pi, start: off, end: off + part.length, n: normWord(part), kw: false, flag: null, note: false, tag: false, matchStart: false };
+          idxs.push(words.length); words.push(w);
+          if (w.n.length >= 4 && !STOP.has(w.n) && !/^\d+$/.test(w.n)) {
+            tf.set(w.n, (tf.get(w.n) || 0) + 1);
+            s.tf.set(w.n, (s.tf.get(w.n) || 0) + 1);
+          }
+        }
+        off += part.length;
+      }
+      s.paraWords.push(idxs);
+      // flags
+      for (const f of FLAGS) {
+        f.re.lastIndex = 0; let m;
+        while ((m = f.re.exec(text))) {
+          const a = m.index, b = a + m[0].length; let first = true;
+          for (const wi of idxs) {
+            const w = words[wi];
+            if (w.end > a && w.start < b && !w.flag) { w.flag = f.label; w.note = !!f.note; if (first) { w.matchStart = true; first = false; } }
+          }
+          if (m[0].length === 0) f.re.lastIndex++;
+        }
+      }
+    });
+    s.wordEnd = words.length;
+  });
+
+  // keywords: global top terms + top distinctive terms per section
+  const df = new Map();
+  sections.forEach(s => s.tf.forEach((_, k) => df.set(k, (df.get(k) || 0) + 1)));
+  const N = sections.length;
+  const global = [...tf.entries()].filter(([, c]) => c >= 2).sort((a, b) => b[1] - a[1]).slice(0, 14).map(([k]) => k);
+  const kwSet = new Set(global);
+  sections.forEach(s => {
+    const scored = [...s.tf.entries()].map(([k, c]) => [k, c * Math.log(1 + N / (df.get(k) || 1))]).sort((a, b) => b[1] - a[1]);
+    s.kwTop = scored.slice(0, 3).map(([k]) => k);
+    s.kwTop.forEach(k => kwSet.add(k));
+  });
+  sections.forEach(s => {
+    const seen = new Map(); let kc = 0;
+    for (let i = s.wordStart; i < s.wordEnd; i++) {
+      const w = words[i];
+      if (kwSet.has(w.n) && !w.flag) { const c = seen.get(w.n) || 0; if (c < 2) { w.kw = true; seen.set(w.n, c + 1); kc++; } }
+    }
+    s.kwCount = kc;
+    const tagged = new Set();
+    for (let i = s.wordStart; i < s.wordEnd; i++) {
+      const w = words[i];
+      if (w.matchStart && !tagged.has(w.flag)) { w.tag = true; tagged.add(w.flag); }
+    }
+  });
+  const keywords = [...kwSet].sort((a, b) => (tf.get(b) || 0) - (tf.get(a) || 0));
+  const maxTf = Math.max(1, ...tf.values());
+  return { name, sections, words, keywords, tf, maxTf };
+}
+
+function flagOf(sentence) {
+  for (const f of FLAGS) { f.re.lastIndex = 0; if (f.re.test(sentence)) return f; }
+  return null;
+}
+
+function localSummary(d) {
+  const all = [];
+  d.sections.forEach((s, si) => {
+    s.paras.forEach(p => splitSentences(p).forEach((t, k) => {
+      const toks = t.split(/\s+/).map(normWord).filter(x => x.length >= 4 && !STOP.has(x));
+      if (toks.length < 4) return;
+      let sc = 0; for (const x of toks) sc += (d.tf.get(x) || 0) / d.maxTf;
+      sc = sc / Math.sqrt(toks.length);
+      const f = flagOf(t);
+      if (f) sc += f.note ? 0.25 : 0.4;
+      if (k === 0) sc += 0.1;
+      all.push({ t, si, sc, f, order: all.length });
+    }));
+  });
+  const byScore = [...all].sort((a, b) => b.sc - a.sc);
+  const key = byScore.slice(0, Math.min(8, Math.max(3, Math.round(all.length / 6)))).sort((a, b) => a.order - b.order);
+  const overview = byScore.slice(0, 3).sort((a, b) => a.order - b.order).map(x => x.t).join(" ");
+  const groups = new Map();
+  for (const x of all) if (x.f) {
+    const g = groups.get(x.f.label) || { label: x.f.label, note: !!x.f.note, items: [] };
+    if (g.items.length < 3 && !g.items.includes(x.t)) g.items.push(x.t);
+    groups.set(x.f.label, g);
+  }
+  const flags = [...groups.values()].sort((a, b) => (a.note - b.note) || b.items.length - a.items.length);
+  const highlights = byScore.filter(x => x.f).slice(0, 8).sort((a, b) => a.order - b.order).map(x => ({ quote: x.t, label: x.f.label, note: !!x.f.note, why: "" }));
+  const sections = d.sections.map((s, si) => {
+    const best = all.filter(x => x.si === si).sort((a, b) => b.sc - a.sc)[0];
+    return { title: s.title, summary: best ? best.t : s.paras[0].slice(0, 220), keywords: s.kwTop };
+  });
+  return { by: "on-page scan", overview, keyPoints: key.map(x => x.t), highlights, flags, sections, keywords: d.keywords.slice(0, 20) };
+}
+
+function mergeClaude(local, c) {
+  if (!c || typeof c !== "object") return local;
+  const arr = v => Array.isArray(v) ? v : [];
+  const str = v => typeof v === "string" ? v.trim() : "";
+  const m = { ...local, by: "Claude" };
+  if (str(c.overview)) m.overview = str(c.overview);
+  const kp = arr(c.key_points).map(str).filter(Boolean); if (kp.length) m.keyPoints = kp;
+  const hl = arr(c.highlights).map(h => ({ quote: str(h && h.quote), why: str(h && h.why), label: (flagOf(str(h && h.quote)) || {}).label || "Key line", note: true })).filter(h => h.quote);
+  if (hl.length) m.highlights = hl;
+  const fl = arr(c.flags).filter(f => f && str(f.quote));
+  if (fl.length) {
+    const g = new Map();
+    for (const f of fl) { const lab = str(f.label) || "Watch out"; const e = g.get(lab) || { label: lab, note: false, items: [], why: [] }; e.items.push(str(f.quote)); if (str(f.why)) e.why.push(str(f.why)); g.set(lab, e); }
+    m.flags = [...g.values()];
+  }
+  const secs = arr(c.sections).filter(s => s && str(s.summary));
+  if (secs.length) m.sections = secs.map((s, i) => ({ title: str(s.title) || (local.sections[i] || {}).title || "Section " + (i + 1), summary: str(s.summary), keywords: (local.sections[i] || {}).keywords || [] }));
+  const kws = arr(c.keywords).map(str).filter(Boolean);
+  if (kws.length) m.keywords = [...new Set([...kws, ...local.keywords])].slice(0, 24);
+  if (str(c.title)) m.title = str(c.title);
+  return m;
+}
+
+async function buildDocx(D, m, meta) {
+  const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const terms = (m.keywords || []).filter(k => k.length >= 4).slice(0, 20);
+  const kwRe = terms.length ? new RegExp("(" + terms.map(esc).join("|") + ")", "gi") : null;
+  const shade = fill => ({ type: D.ShadingType.CLEAR, color: "auto", fill });
+  const runs = (text, opts = {}) => {
+    if (!kwRe) return [new D.TextRun({ text, ...opts })];
+    const out = []; let last = 0; kwRe.lastIndex = 0; let mm;
+    while ((mm = kwRe.exec(text))) {
+      if (mm.index > last) out.push(new D.TextRun({ text: text.slice(last, mm.index), ...opts }));
+      out.push(new D.TextRun({ text: mm[0], ...opts, bold: true, shading: shade("E3DAFF") }));
+      last = mm.index + mm[0].length;
+    }
+    if (last < text.length) out.push(new D.TextRun({ text: text.slice(last), ...opts }));
+    return out;
+  };
+  const H1 = t => new D.Paragraph({ heading: D.HeadingLevel.HEADING_1, spacing: { before: 320, after: 120 }, children: [new D.TextRun({ text: t })] });
+  const gray = (t) => new D.Paragraph({ spacing: { after: 60 }, children: [new D.TextRun({ text: t, color: "6B7280", size: 18 })] });
+  const C = [];
+  C.push(new D.Paragraph({ heading: D.HeadingLevel.TITLE, children: [new D.TextRun({ text: "Summary: " + (m.title || meta.fileName) })] }));
+  C.push(gray("Source file: " + meta.fileName + "   ·   Scanned " + meta.date + "   ·   Summary written by " + (m.by === "Claude" ? "Claude" : "Fine Print Crawler (on-page scan)")));
+  C.push(gray(meta.words.toLocaleString("en-US") + " words   ·   " + meta.sections + " sections   ·   " + meta.keywords + " keyword hits   ·   " + meta.flags + " flags"));
+  C.push(new D.Paragraph({ spacing: { after: 120 }, children: [
+    new D.TextRun({ text: "Legend: ", size: 18, color: "6B7280" }),
+    new D.TextRun({ text: " keyword ", size: 18, bold: true, shading: shade("E3DAFF") }),
+    new D.TextRun({ text: "  ", size: 18 }),
+    new D.TextRun({ text: " flagged line ", size: 18, shading: shade("FFD9CB") }),
+    new D.TextRun({ text: "  ", size: 18 }),
+    new D.TextRun({ text: " highlighted line ", size: 18, shading: shade("FFF1C2") }),
+  ] }));
+
+  C.push(H1("Overview"));
+  C.push(new D.Paragraph({ spacing: { after: 120 }, children: runs(m.overview || "") }));
+
+  if (m.keyPoints && m.keyPoints.length) {
+    C.push(H1("Key points"));
+    m.keyPoints.forEach(k => C.push(new D.Paragraph({ bullet: { level: 0 }, spacing: { after: 60 }, children: runs(k) })));
+  }
+  if (m.highlights && m.highlights.length) {
+    C.push(H1("Highlighted sentences"));
+    m.highlights.forEach(h => {
+      C.push(new D.Paragraph({ spacing: { before: 80, after: 40 }, indent: { left: 240 }, children: [
+        new D.TextRun({ text: "¶ " + h.label + "   ", bold: true, color: h.note ? "A16207" : "C2410C", size: 18 }),
+        new D.TextRun({ text: "“" + h.quote + "”", shading: shade("FFF1C2") }),
+      ] }));
+      if (h.why) C.push(new D.Paragraph({ indent: { left: 480 }, spacing: { after: 60 }, children: [new D.TextRun({ text: h.why, italics: true, color: "4B5563" })] }));
+    });
+  }
+  if (m.flags && m.flags.length) {
+    C.push(H1("Flags: things to watch"));
+    m.flags.forEach(g => {
+      C.push(new D.Paragraph({ spacing: { before: 160, after: 40 }, children: [new D.TextRun({ text: "¶ " + g.label, bold: true, color: g.note ? "A16207" : "C2410C" }), new D.TextRun({ text: "   (" + g.items.length + ")", color: "6B7280", size: 18 })] }));
+      g.items.forEach((q, i) => {
+        C.push(new D.Paragraph({ bullet: { level: 0 }, spacing: { after: 40 }, children: [new D.TextRun({ text: q, shading: shade(g.note ? "FFF1C2" : "FFD9CB") })] }));
+        if (g.why && g.why[i]) C.push(new D.Paragraph({ indent: { left: 720 }, spacing: { after: 40 }, children: [new D.TextRun({ text: g.why[i], italics: true, color: "4B5563", size: 20 })] }));
+      });
+    });
+  }
+  if (m.keywords && m.keywords.length) {
+    C.push(H1("Keywords"));
+    const kr = [];
+    m.keywords.forEach((k, i) => { if (i) kr.push(new D.TextRun({ text: "   " })); kr.push(new D.TextRun({ text: " " + k + " ", bold: true, shading: shade("E3DAFF") })); });
+    C.push(new D.Paragraph({ spacing: { after: 120, line: 360 }, children: kr }));
+  }
+  if (m.sections && m.sections.length) {
+    C.push(H1("Section by section"));
+    m.sections.forEach((s, i) => {
+      C.push(new D.Paragraph({ spacing: { before: 140, after: 30 }, children: [new D.TextRun({ text: (i + 1) + ". " + s.title, bold: true })] }));
+      C.push(new D.Paragraph({ spacing: { after: 30 }, children: runs(s.summary) }));
+      if (s.keywords && s.keywords.length) C.push(gray("Keywords: " + s.keywords.join(" · ")));
+    });
+  }
+  const doc = new D.Document({
+    creator: "Fine Print Crawler",
+    title: "Summary: " + meta.fileName,
+    styles: { default: { document: { run: { font: "Calibri", size: 22 } } } },
+    sections: [{ properties: {}, children: C }],
+  });
+  return doc;
+}
+// </pure>
+
+/* ---------------- sample document (fictional) ---------------- */
+const SAMPLE_NAME = "Lumen Notes – Terms of Service (example)";
+const SAMPLE = `1. Acceptance of Terms
+Welcome to Lumen Notes. These Terms of Service govern your access to our apps, website and features (together, the "Service"). By creating an account, opening the app, or scrolling past this screen, you confirm that you have read, understood and accepted these Terms in full, together with our Privacy Policy and Community Guidelines.
+
+We may revise these Terms at any time, for any reason, with or without notice. The most current version will always be available somewhere within the Service. Your continued use of the Service after a change means that you accept it. Your acceptance is perpetual and irrevocable.
+
+2. Eligibility
+You must be at least the minimum age required in your country to use the Service. If you are using the Service on behalf of another person, a family or a household, you represent that you have authority to bind them. Where a minor uses a device or account registered to you, you accept these Terms on the minor's behalf and you are responsible for all of their activity, including any content, data or purchases they generate.
+
+3. Your Account
+You agree to provide accurate, current and complete information and to keep it updated. We may verify your identity using any information available to us, including information obtained from third parties, public records and data brokers. We may suspend your account at any time, for any reason or no reason, without notice and without liability to you.
+
+4. Your Content
+You keep whatever ownership rights you may have in the notes, photos, voice recordings and drafts you upload ("Your Content"). However, you grant us a worldwide, royalty-free, sublicensable licence to host, store, copy, modify, publish and create derivative works from Your Content. This licence is perpetual and continues even after you delete Your Content or close your account. Copies may remain in backup copies and partner systems.
+
+5. Face and Voice Features
+Some features scan your face and voice to unlock the app and to tag people in photos. By turning these features on, you consent to the collection of biometric identifiers, including faceprints and voiceprints, which we may retain for as long as we consider necessary.
+
+6. How We Use Your Information
+We use the information we collect to operate the Service, to personalise what you see, and to train our AI models and other machine learning systems. We also collect precise location data, including where you live and where you sleep, to suggest reminders at the right place and time.
+
+7. Sharing and Business Transfers
+We may share your information with our partners, advertisers and affiliates. If we are involved in a merger, acquisition, bankruptcy or sale of business assets, your information may be sold or transferred as one of those assets.
+
+8. Payments
+Premium plans automatically renew each month until you cancel. All payments are non-refundable. If you cancel, you must do so no later than 24 hours before the renewal date; otherwise a cancellation fee may apply.
+
+9. Disputes
+Any dispute will be resolved through binding arbitration. You waive your right to take part in a class action or a jury trial. Sections 4, 5, 6 and 9 survive termination of these Terms.`;
+
+/* ---------------- DOM + state ---------------- */
+const $ = s => document.querySelector(s);
+const viewer = $("#viewer"), content = $("#content"), stage = $("#stage"), cv = $("#fx"), ctx = cv.getContext("2d");
+const ui = { pct: $("#pct"), fname: $("#fname"), status: $("#status"), bar: $("#bar"), words: $("#sWords"), wps: $("#sWps"), sec: $("#sSec"), flags: $("#flags"), flagCount: $("#flagCount"), kws: $("#kws"), kwCount: $("#kwCount"), summary: $("#summary"), by: $("#by"), msg: $("#msg"), save: $("#save"), skip: $("#skip") };
+const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const css = getComputedStyle(document.documentElement);
+const COL = { violet: css.getPropertyValue("--violet").trim() || "#a184ff", coral: css.getPropertyValue("--coral").trim() || "#ff8a63", ink: css.getPropertyValue("--ink").trim() || "#d4d8e0", bg: css.getPropertyValue("--bg").trim() || "#0b0d11", mint: css.getPropertyValue("--mint").trim() || "#79cfa9" };
+
+let D = null;            // analysed doc
+let secEls = [], hudEls = [];
+let state = null;
+let lit = [];
+let flagTally = new Map(), kwFound = new Map();
+let model = null, docBlob = null, claudeJob = null, claudeCtl = null;
+let userScrollUntil = 0;
+let isExample = true;
+
+function fmt(n) { return n.toLocaleString("en-US"); }
+function pad(n, w) { return String(n).padStart(w, "0"); }
+
+/* ---------------- file reading ---------------- */
+async function readFile(file) {
+  const name = file.name;
+  const ext = (name.split(".").pop() || "").toLowerCase();
+  if (ext === "docx") {
+    if (!window.mammoth) throw new Error("The Word reader didn't load. Check your connection and reload.");
+    const buf = await file.arrayBuffer();
+    const res = await mammoth.convertToHtml({ arrayBuffer: buf });
+    const dom = new DOMParser().parseFromString(res.value, "text/html");
+    const blocks = [];
+    dom.body.querySelectorAll("h1,h2,h3,h4,h5,h6,p,li,td").forEach(el => {
+      if (el.tagName === "TD" && el.querySelector("p")) return;
+      if (el.closest("li") && el.tagName === "P") return;
+      const text = el.textContent.replace(/\s+/g, " ").trim();
+      if (!text) return;
+      if (/^H\d$/.test(el.tagName)) return blocks.push({ h: true, text });
+      const strong = el.querySelector("strong,b");
+      const allBold = strong && strong.textContent.trim() === text;
+      if (el.tagName === "P" && (allBold && text.length < 90 || isHeading(text))) return blocks.push({ h: true, text: cleanHeading(text) });
+      blocks.push({ h: false, text: el.tagName === "LI" ? "• " + text : text });
+    });
+    return blocks;
+  }
+  if (ext === "pdf") {
+    if (!window.pdfjsLib) throw new Error("The PDF reader didn't load. Check your connection and reload.");
+    pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
+    const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
+    const lines = [];
+    for (let p = 1; p <= pdf.numPages; p++) {
+      const page = await pdf.getPage(p);
+      const tc = await page.getTextContent();
+      let line = "", lastY = null;
+      for (const it of tc.items) {
+        if (!("str" in it)) continue;
+        const y = it.transform[5];
+        if (lastY !== null && Math.abs(y - lastY) > 2 && line.trim()) { lines.push(line); line = ""; }
+        line += it.str;
+        if (it.hasEOL && line.trim()) { lines.push(line); line = ""; }
+        lastY = y;
+      }
+      if (line.trim()) lines.push(line);
+      lines.push("");
+    }
+    // join lines: blank line or sentence end + new capital line → paragraph break
+    let txt = "", prev = "";
+    for (const raw of lines) {
+      const l = raw.trim();
+      if (!l) { txt += "\n\n"; prev = ""; continue; }
+      if (prev && (isHeading(l) || isHeading(prev) || (/[.:!?]$/.test(prev) && prev.length < 60))) txt += "\n\n";
+      else if (prev) txt += prev.endsWith("-") ? "" : " ";
+      txt += prev.endsWith("-") ? l : l;
+      prev = l;
+    }
+    if (txt.replace(/\s/g, "").length < 20) throw new Error("This PDF has no text layer (it is a scanned picture). Try a .docx or a PDF with selectable text.");
+    return blocksFromText(txt);
+  }
+  if (ext === "txt" || ext === "md" || file.type.startsWith("text/")) return blocksFromText(await file.text());
+  throw new Error("That file type isn't supported. Upload a .docx, .pdf, .txt or .md file.");
+}
+
+/* ---------------- rendering ---------------- */
+function render() {
+  content.textContent = "";
+  secEls = []; hudEls = [];
+  const frag = document.createDocumentFragment();
+  D.sections.forEach((s, si) => {
+    const sec = document.createElement("section"); sec.className = "sec";
+    const strip = document.createElement("div"); strip.className = "strip"; strip.textContent = /^(\d|[IVXLC]+\.)/.test(s.title) ? "¶ " + s.title : "¶ " + (si + 1) + "  " + s.title;
+    const hud = document.createElement("div"); hud.className = "sechud"; hud.hidden = true;
+    sec.append(strip, hud);
+    s.paraWords.forEach(idxs => {
+      const p = document.createElement("p");
+      idxs.forEach((wi, k) => {
+        const w = D.words[wi];
+        const sp = document.createElement("span"); sp.className = "w"; sp.textContent = w.t;
+        w.el = sp;
+        if (k) p.append(" ");
+        p.append(sp);
+      });
+      sec.append(p);
+    });
+    secEls.push(sec); hudEls.push(hud); frag.append(sec);
+  });
+  content.append(frag);
+}
+
+function placeTag(w) {
+  const t = document.createElement("div");
+  t.className = "tag" + (w.note ? " note" : "");
+  t.textContent = "¶ " + w.flag;
+  content.append(t);
+  const x = w.el.offsetLeft - 6, y = w.el.offsetTop - 34;
+  const maxX = content.clientWidth - t.offsetWidth - 8;
+  t.style.left = Math.max(8, Math.min(x, maxX)) + "px";
+  t.style.top = Math.max(4, y) + "px";
+}
+
+function readWord(i) {
+  const w = D.words[i];
+  w.el.classList.add("r");
+  if (w.kw) { w.el.classList.add("kw"); lit.push(w); kwFound.set(w.n, (kwFound.get(w.n) || 0) + 1); state.kwDirty = true; }
+  if (w.flag) {
+    w.el.classList.add(w.note ? "fn" : "fl");
+    if (w.matchStart) {
+      lit.push(w);
+      const e = flagTally.get(w.flag) || { n: 0, note: w.note, first: w };
+      e.n++; flagTally.set(w.flag, e); state.flagDirty = true;
+      if (!w.note && w.tag) w.el.classList.add("ring");
+    }
+    if (w.tag) placeTag(w);
+  }
+  if (lit.length > 90) lit.splice(0, lit.length - 90);
+  if (w.sec !== state.sec) {
+    state.sec = w.sec;
+    hudEls[w.sec].hidden = false;
+  }
+}
+
+function updateSecHud() {
+  if (state.sec < 0) return;
+  const s = D.sections[state.sec];
+  const read = Math.min(s.wordEnd, state.idx) - s.wordStart;
+  hudEls[state.sec].textContent =
+    "Section — " + (state.sec + 1) + " / " + D.sections.length +
+    "   Read " + pad(Math.max(0, read), 4) + " / " + fmt(D.words.length) + " words" +
+    "   Keywords " + pad(s.kwCount, 3) + "  " + s.kwTop.join(" · ");
+}
+
+function updateSide(force) {
+  const n = D.words.length;
+  const read = Math.min(state.idx, n);
+  const p = n ? Math.round(read / n * 100) : 0;
+  ui.pct.textContent = p + "%";
+  ui.bar.style.width = p + "%";
+  ui.words.textContent = fmt(read);
+  ui.wps.textContent = state.done ? "—" : Math.round(state.wps);
+  ui.sec.textContent = (Math.max(0, state.sec) + 1) + "/" + D.sections.length;
+  if (state.flagDirty || force) {
+    state.flagDirty = false;
+    const items = [...flagTally.entries()].sort((a, b) => (a[1].note - b[1].note) || b[1].n - a[1].n);
+    ui.flags.textContent = "";
+    if (!items.length) { const li = document.createElement("li"); li.className = "empty"; li.textContent = state.done ? "No flags found." : "Nothing flagged yet."; ui.flags.append(li); }
+    let total = 0;
+    for (const [label, e] of items) {
+      total += e.n;
+      const li = document.createElement("li");
+      const b = document.createElement("button"); b.type = "button"; if (e.note) b.className = "note";
+      b.append("¶ " + label); const c = document.createElement("b"); c.textContent = e.n; b.append(c);
+      b.addEventListener("click", () => { userScrollUntil = Date.now() + 4000; viewer.scrollTo({ top: e.first.el.offsetTop - viewer.clientHeight * 0.35, behavior: reduced ? "auto" : "smooth" }); });
+      li.append(b); ui.flags.append(li);
+    }
+    ui.flagCount.textContent = total;
+  }
+  if (state.kwDirty || force) {
+    state.kwDirty = false;
+    const items = [...kwFound.entries()].sort((a, b) => b[1] - a[1]).slice(0, 24);
+    ui.kws.textContent = "";
+    for (const [k] of items) { const s = document.createElement("span"); s.textContent = k; ui.kws.append(s); }
+    if (!items.length) { const s = document.createElement("span"); s.className = "empty"; s.style.background = "none"; s.textContent = "Keywords light up as the crawler reads."; ui.kws.append(s); }
+    ui.kwCount.textContent = [...kwFound.values()].reduce((a, b) => a + b, 0);
+  }
+}
+
+/* ---------------- spider ---------------- */
+const LEG = [-38, -12, 14, 40, 140, 166, 192, 218].map(d => d * Math.PI / 180);
+const spider = { x: 40, y: 40, vx: 0, vy: 0, feet: LEG.map(() => ({ x: 40, y: 40, sx: 40, sy: 40, fx: 40, fy: 40, t: 1 })) };
+let dpr = 1, cw = 0, ch = 0;
+function sizeCanvas() {
+  dpr = Math.min(2, window.devicePixelRatio || 1);
+  cw = stage.clientWidth; ch = stage.clientHeight;
+  cv.width = Math.round(cw * dpr); cv.height = Math.round(ch * dpr);
+}
+new ResizeObserver(sizeCanvas).observe(stage);
+sizeCanvas();
+
+function wpos(w) { return { x: content.offsetLeft + w.el.offsetLeft + w.el.offsetWidth / 2, y: content.offsetTop + w.el.offsetTop + w.el.offsetHeight / 2 }; }
+
+function stepSpider(dt) {
+  if (!D || !D.words.length) return;
+  const w = D.words[Math.min(state.idx, D.words.length - 1)];
+  const p = wpos(w);
+  const k = Math.min(1, dt * 10);
+  const nx = spider.x + (p.x - spider.x) * k, ny = spider.y + (p.y - 14 - spider.y) * k;
+  spider.vx = (nx - spider.x) / Math.max(dt, 1e-3); spider.vy = (ny - spider.y) / Math.max(dt, 1e-3);
+  spider.x = nx; spider.y = ny;
+  const R = 46; let moving = 0;
+  spider.feet.forEach(f => { if (f.t < 1) moving++; });
+  spider.feet.forEach((f, i) => {
+    const a = LEG[i];
+    const ix = spider.x + Math.cos(a) * R + spider.vx * 0.06;
+    const iy = spider.y + Math.sin(a) * R * 0.8 + spider.vy * 0.06;
+    if (f.t >= 1 && Math.hypot(f.x - ix, f.y - iy) > 28 && moving < 4) { f.sx = f.x; f.sy = f.y; f.fx = ix; f.fy = iy; f.t = 0; moving++; }
+    if (f.t < 1) {
+      f.t = Math.min(1, f.t + dt / 0.08);
+      const e = f.t * f.t * (3 - 2 * f.t);
+      f.x = f.sx + (f.fx - f.sx) * e; f.y = f.sy + (f.fy - f.sy) * e - Math.sin(f.t * Math.PI) * 6;
+    }
+  });
+}
+
+function draw(ts) {
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, cw, ch);
+  if (!D) return;
+  const ox = -viewer.scrollLeft, oy = -viewer.scrollTop;
+  const bx = spider.x + ox, by = spider.y + oy;
+  // web lines to lit words
+  ctx.lineWidth = 1;
+  for (const w of lit) {
+    const p = wpos(w); const x = p.x + ox, y = p.y + oy;
+    const d = Math.hypot(x - bx, y - by);
+    if (d > 300) continue;
+    ctx.strokeStyle = (w.flag && !w.note ? COL.coral : COL.violet);
+    ctx.globalAlpha = (1 - d / 300) * 0.55;
+    ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(x, y); ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+  // legs
+  ctx.strokeStyle = COL.violet; ctx.lineWidth = 1.6; ctx.lineCap = "round";
+  spider.feet.forEach(f => {
+    const fx = f.x + ox, fy = f.y + oy;
+    const kx = (bx + fx) / 2 + (fx - bx) * 0.08, ky = Math.min(by, fy) - 14;
+    ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(kx, ky); ctx.lineTo(fx, fy); ctx.stroke();
+    ctx.beginPath(); ctx.arc(fx, fy, 1.6, 0, Math.PI * 2); ctx.fillStyle = COL.violet; ctx.fill();
+  });
+  // body
+  const ang = Math.atan2(spider.vy, spider.vx || 0.0001);
+  const moving = Math.hypot(spider.vx, spider.vy) > 4;
+  const dir = moving ? ang : -Math.PI / 2;
+  ctx.save(); ctx.translate(bx, by); ctx.rotate(dir + Math.PI / 2);
+  ctx.fillStyle = COL.bg; ctx.strokeStyle = COL.violet; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.ellipse(0, 8, 7, 10, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.ellipse(0, -5, 5, 5.5, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = COL.coral; ctx.beginPath(); ctx.arc(-2, -7, 1.2, 0, 7); ctx.arc(2, -7, 1.2, 0, 7); ctx.fill();
+  ctx.restore();
+  // label box
+  const lx = bx + 18, ly = by - 40;
+  ctx.fillStyle = "rgba(11,13,17,.88)"; ctx.strokeStyle = COL.ink; ctx.lineWidth = 1;
+  ctx.fillRect(lx, ly, 96, 28); ctx.strokeRect(lx + .5, ly + .5, 95, 27);
+  ctx.fillStyle = COL.ink; ctx.font = "600 10px 'JetBrains Mono', monospace"; ctx.textBaseline = "top";
+  ctx.fillText("CRAWLER/01", lx + 6, ly + 4);
+  ctx.font = "400 10px 'JetBrains Mono', monospace";
+  ctx.fillText(state.done ? "done" : Math.round(state.wps) + " w/s", lx + 6, ly + 15);
+}
+
+let last = 0;
+function frame(ts) {
+  const dt = Math.min(0.05, last ? (ts - last) / 1000 : 0.016); last = ts;
+  if (D && state) {
+    if (state.running) {
+      const el = (ts - state.start) / 1000;
+      const mult = parseFloat($("#speed").value) || 1;
+      state.wps = state.wpsMax * mult * Math.min(1, 0.12 + el / 6);
+      state.acc += state.wps * dt;
+      let n = Math.floor(state.acc); state.acc -= n;
+      while (n-- > 0 && state.idx < D.words.length) readWord(state.idx++);
+      if (state.idx >= D.words.length) finish();
+      if (Date.now() > userScrollUntil && state.idx < D.words.length) {
+        const w = D.words[state.idx];
+        const target = content.offsetTop + w.el.offsetTop - viewer.clientHeight * 0.42;
+        viewer.scrollTop += (target - viewer.scrollTop) * Math.min(1, dt * 5);
+      }
+      updateSecHud();
+    }
+    updateSide(false);
+    stepSpider(dt);
+    draw(ts);
+  }
+  requestAnimationFrame(frame);
+}
+["wheel", "touchstart", "keydown"].forEach(ev => viewer.addEventListener(ev, () => { userScrollUntil = Date.now() + 2500; }, { passive: true }));
+
+/* ---------------- flow ---------------- */
+function msg(t) { ui.msg.textContent = t || ""; }
+
+function start(name, blocks, example) {
+  if (claudeCtl) claudeCtl.abort();
+  claudeCtl = null; claudeJob = null;
+  isExample = example;
+  D = analyze(name, blocks);
+  lit = []; flagTally = new Map(); kwFound = new Map(); model = null; docBlob = null;
+  render();
+  viewer.scrollTop = 0;
+  const p0 = wpos(D.words[0]);
+  spider.x = p0.x; spider.y = p0.y - 14; spider.feet.forEach(f => { f.x = f.sx = f.fx = p0.x; f.y = f.sy = f.fy = p0.y; f.t = 1; });
+  state = { idx: 0, acc: 0, wps: 0, wpsMax: Math.max(45, Math.min(900, D.words.length / 18)), start: performance.now(), running: true, done: false, sec: -1, flagDirty: true, kwDirty: true };
+  ui.fname.textContent = name;
+  if (example) { const b = document.createElement("span"); b.className = "example"; b.textContent = "example"; ui.fname.append(b); }
+  ui.status.textContent = "Crawling " + fmt(D.words.length) + " words in " + D.sections.length + " sections…";
+  ui.summary.innerHTML = '<p class="empty">The summary appears here when the crawler finishes.</p>';
+  ui.by.textContent = ""; ui.save.disabled = true; ui.skip.disabled = false;
+  msg("");
+  if (!example && $("#optClaude").checked) claudeJob = askClaude(D);
+  if (reduced) skipToEnd();
+}
+
+function skipToEnd() {
+  if (!state || state.done) return;
+  while (state.idx < D.words.length) readWord(state.idx++);
+  finish();
+  viewer.scrollTop = 0;
+}
+
+async function askClaude(d) {
+  const use = window.claude && window.claude.use;
+  if (!use) return null;
+  const sample = await window.claude.use("sample");
+  if (!sample) return null;
+  claudeCtl = new AbortController();
+  const body = d.sections.map((s, i) => "## " + (i + 1) + ". " + s.title + "\n" + s.paras.join("\n")).join("\n\n").slice(0, 60000);
+  const prompt =
+`You summarize documents for a student. Read the document below and reply with ONLY a JSON object of this shape:
+{"title": string, "overview": string (3-5 sentences), "key_points": string[] (5-8 items),
+ "highlights": [{"quote": string, "why": string}] (the 5-10 most important sentences),
+ "flags": [{"label": string (2-4 words, e.g. "Forever", "Deadline", "Shared With Others"), "quote": string, "why": string}] (risky, unusual or must-do items, up to 10),
+ "keywords": string[] (8-15), "sections": [{"title": string, "summary": string (one sentence)}] (same order as the document, at most 25)}
+Rules: write in the same language the document is written in. Every "quote" must be copied word for word from the document. Keep "why" to one short sentence.
+
+Document name: ${d.name}
+
+${body}`;
+  return sample.json(prompt, { signal: claudeCtl.signal, modelTier: "default" });
+}
+
+async function finish() {
+  if (state.done) return;
+  state.running = false; state.done = true; state.idx = D.words.length;
+  ui.skip.disabled = true;
+  updateSecHud(); updateSide(true);
+  const myD = D;
+  const local = localSummary(D);
+  model = local;
+  renderSummary(model);
+  ui.status.textContent = "Scan complete.";
+  if (claudeJob) {
+    ui.status.textContent = "Scan complete. Claude is writing the summary…";
+    try {
+      const c = await claudeJob;
+      if (myD !== D) return;
+      if (c) { model = mergeClaude(local, c); renderSummary(model); ui.status.textContent = "Scan complete. Summary by Claude."; }
+      else ui.status.textContent = "Scan complete. Claude isn't available here, so the on-page summary is used.";
+    } catch (e) {
+      if (myD !== D) return;
+      ui.status.textContent = e && e.code === "not_granted" ? "Scan complete. Claude wasn't allowed, so the on-page summary is used." : "Scan complete. Claude couldn't finish, so the on-page summary is used.";
+    }
+  }
+  await makeDocx(myD);
+  if (myD === D && !isExample && $("#optAuto").checked) saveDocx();
+}
+
+async function makeDocx(myD) {
+  try {
+    if (!window.docx) throw new Error("The .docx writer didn't load. Check your connection and reload.");
+    const meta = { fileName: myD.name, date: new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }), words: myD.words.length, sections: myD.sections.length, keywords: [...kwFound.values()].reduce((a, b) => a + b, 0), flags: [...flagTally.values()].reduce((a, b) => a + b.n, 0) };
+    const doc = await buildDocx(window.docx, model, meta);
+    const blob = await window.docx.Packer.toBlob(doc);
+    if (myD !== D) return;
+    docBlob = blob; ui.save.disabled = false;
+  } catch (e) { msg(e.message || "Couldn't build the .docx file."); }
+}
+
+async function saveDocx() {
+  if (!docBlob) return;
+  const dl = window.claude && window.claude.use ? await window.claude.use("downloads") : null;
+  const base = D.name.replace(/\.[^.]+$/, "").replace(/[\\/:*?"<>|]+/g, " ").trim().slice(0, 80) || "document";
+  if (!dl) {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(docBlob); a.download = base + " - summary.docx";
+    document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    msg("Saved " + base + " - summary.docx"); return;
+  }
+  try {
+    await dl.save({ filename: base + " - summary.docx", data: docBlob });
+    msg("Saved " + base + " - summary.docx");
+  } catch (e) {
+    if (e && e.code === "declined") msg("Download cancelled. Use the button to save it later.");
+    else if (e && e.code === "rate_limited") msg("A save prompt is already open.");
+    else msg("Couldn't save the file here.");
+  }
+}
+
+function renderSummary(m) {
+  const el = ui.summary; el.textContent = "";
+  ui.by.textContent = m.by === "Claude" ? "by Claude" : "on-page";
+  const h = t => { const x = document.createElement("h3"); x.textContent = t; el.append(x); };
+  h("Overview");
+  const p = document.createElement("p"); p.textContent = m.overview || "—"; el.append(p);
+  if (m.keyPoints.length) {
+    h("Key points");
+    const ul = document.createElement("ul");
+    m.keyPoints.slice(0, 8).forEach(k => { const li = document.createElement("li"); li.textContent = k; ul.append(li); });
+    el.append(ul);
+  }
+  if (m.flags.length) {
+    h("Flagged lines");
+    const ul = document.createElement("ul");
+    m.flags.slice(0, 8).forEach(g => { const li = document.createElement("li"); const s = document.createElement("span"); s.className = "lbl" + (g.note ? " note" : ""); s.textContent = g.label; li.append(s, g.items[0]); ul.append(li); });
+    el.append(ul);
+  }
+}
+
+/* ---------------- inputs ---------------- */
+async function handleFile(file) {
+  if (!file) return;
+  ui.fname.textContent = file.name; ui.status.textContent = "Reading the file…"; msg("");
+  try {
+    const blocks = await readFile(file);
+    start(file.name, blocks, false);
+  } catch (e) {
+    ui.status.textContent = "Couldn't read that file.";
+    msg(e.message || String(e));
+  }
+}
+$("#file").addEventListener("change", e => { handleFile(e.target.files[0]); e.target.value = ""; });
+ui.skip.addEventListener("click", skipToEnd);
+ui.save.addEventListener("click", saveDocx);
+const drop = $("#drop"); let dragN = 0;
+window.addEventListener("dragenter", e => { if (e.dataTransfer && [...e.dataTransfer.types].includes("Files")) { dragN++; drop.hidden = false; e.preventDefault(); } });
+window.addEventListener("dragleave", () => { dragN = Math.max(0, dragN - 1); if (!dragN) drop.hidden = true; });
+window.addEventListener("dragover", e => e.preventDefault());
+window.addEventListener("drop", e => { e.preventDefault(); dragN = 0; drop.hidden = true; const f = e.dataTransfer && e.dataTransfer.files[0]; if (f) handleFile(f); });
+
+if (!(window.claude && window.claude.use)) { $("#optClaude").checked = false; $("#optClaude").closest("label").hidden = true; }
+start(SAMPLE_NAME, blocksFromText(SAMPLE), true);
+requestAnimationFrame(frame);
+</script>
+
+</body>
+</html>
